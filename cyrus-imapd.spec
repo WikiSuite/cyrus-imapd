@@ -212,6 +212,7 @@ install -p -m 644 %{SOURCE3}    %{buildroot}%{_sysconfdir}/pam.d/mupdate
 install -p -m 644 %{SOURCE3}    %{buildroot}%{_sysconfdir}/pam.d/lmtp
 install -p -m 644 %{SOURCE3}    %{buildroot}%{_sysconfdir}/pam.d/nntp
 install -p -m 644 %{SOURCE3}    %{buildroot}%{_sysconfdir}/pam.d/csync
+install -p -m 644 %{SOURCE3}    %{buildroot}%{_sysconfdir}/pam.d/http
 install -p -m 644 %{SOURCE1}    %{buildroot}%{_sysconfdir}/logrotate.d/%{name}
 install -p -m 644 %{SOURCE7}   %{buildroot}%{_sysconfdir}/sysconfig/%{name}
 install -p -m 755 %{SOURCE10}   %{buildroot}%{_sysconfdir}/cron.daily/%{name}
