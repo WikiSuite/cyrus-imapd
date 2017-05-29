@@ -1,0 +1,409 @@
+#!/bin/bash
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+# This script converts all db files of a cyrus installation from their
+# existing format to the format required by the current installation.
+# The format of current db files is determined using the 'file' command
+# with a magic file added for skiplist db, the new format is read from
+# a config file usually in /usr/share/cyrus-imapd/rpm/db.cfg, which is
+# created while compiling. After converting, the db.cfg file is
+# copied to a cache file usually at /var/lib/imap/rpm/db.cfg.cache to
+# allow bypassing this converting script if both files are identical.
+# While this is a bit less secure, it may be useful on big server where
+# db converting is done automatically.
+#
+# This script can safely be run as root, it will reexec itself as user
+# cyrus if needed.
+#
+# author: Simon Matter, Invoca Systems <simon.matter@invoca.ch>
+
+# changelog
+# v1.0.1, Oct 22 2002 Simon Matter <simon.matter@invoca.ch>
+# - added two-step conversion method
+#
+# v1.0.2, Jan 10 2003 Simon Matter <simon.matter@invoca.ch>
+# - fixed a bug where cvt_cyrusdb was called to convert empty or
+#   nonexistent files
+#
+# v1.0.3, Mar 14 2003 Simon Matter <simon.matter@invoca.ch>
+# - fixed a problem with new versions of the file command
+#
+# v1.0.4
+# - added GPL license
+#
+# v1.0.5, May 02 2003 Simon Matter <simon.matter@invoca.ch>
+# - modified exec path
+#
+# v1.0.6, Jul 18 2003 Simon Matter <simon.matter@invoca.ch>
+# - changed db3 to berkeley
+# - added new db backends for 2.2
+#
+# v1.0.7, Jan 23 2004 Simon Matter <simon.matter@invoca.ch>
+# - included some modifications from Luca Olivetti <luca@olivetti.cjb.net>
+# - added masssievec functionality
+#
+# v1.0.8, Jan 28 2004 Simon Matter <simon.matter@invoca.ch>
+# - convert sieve scripts to UTF-8 before calling masssievec
+#
+# v1.0.9, Jan 29 2004 Simon Matter <simon.matter@invoca.ch>
+# - convert sieve scripts to UTF-8 only if sievec failed before
+#
+# v1.0.10, Feb 24 2004 Simon Matter <simon.matter@invoca.ch>
+# - change su within init script to get input from
+#   /dev/null, this prevents hang when running in SELinux
+#
+# v1.0.11, Mar 02 2004 Simon Matter <simon.matter@invoca.ch>
+# - fixed SELinux fix
+#
+# v1.0.12, Dec 16 2004 Simon Matter <simon.matter@invoca.ch>
+# - use runuser instead of su if available
+#
+# v1.0.13, Jul 15 2005 Simon Matter <simon.matter@invoca.ch>
+# - don't use flat in the two step conversion, use skiplist instead
+#
+# v1.0.14, Jul 18 2005 Simon Matter <simon.matter@invoca.ch>
+# - replace the order of the magic files in the file call to make
+#   sure skiplist is detected correctly.
+#
+# v1.0.15, Aug 17 2005 Simon Matter <simon.matter@invoca.ch>
+# - add functionality to export all berkeley db files to skiplist
+#
+# v1.1.0, Aug 18 2005 Simon Matter <simon.matter@invoca.ch>
+# - fix export functionality, try to recover Berkeley databases
+#   as much as possible before any conversion.
+#
+# v1.1.1, Dec 05 2005 Simon Matter <simon.matter@invoca.ch>
+# - run db_checkpoint in background with a timeout to prevent
+#   that cyrus-imapd doesn't start at all if it hangs.
+#
+# v1.1.2, Dec 06 2005 Simon Matter <simon.matter@invoca.ch>
+# - make handling of db_checkpoint more robust
+#
+# v1.2.0, Jan 12 2006 Simon Matter <simon.matter@invoca.ch>
+# - adopt for cyrus-imapd-2.3
+#
+# v1.2.1, Jan 13 2006 Simon Matter <simon.matter@invoca.ch>
+# - code cleanup
+#
+# v1.2.2, Nov 29 2007 Simon Matter <simon.matter@invoca.ch>
+# - add ability to handle "@include" options in imapd.conf, patch
+#   provided by Tim Bannister
+#
+# v1.2.3, Feb 07 2008 Simon Matter <simon.matter@invoca.ch>
+# - add ability to handle tabs in imapd.conf, patch provided
+#   by Franz Knipp
+# - disable default values for some config options like sievedir
+#
+# v1.2.4, Apr 23 2008 Simon Matter <simon.matter@invoca.ch>
+# - add support for statuscache.db
+#
+# v1.3.0, Sep 29 2008 Simon Matter <simon.matter@invoca.ch>
+# - add multi-instance support
+#
+# v1.3.1, Oct 09 2008 Simon Matter <simon.matter@invoca.ch>
+# - improve variable handling
+#
+# v1.3.2, May 26 2009 Simon Matter <simon.matter@invoca.ch>
+# - add some sanity checks to multi-instance support
+#
+# v1.3.3, May 27 2009 Simon Matter <simon.matter@invoca.ch>
+# - make some cosmetic changes
+#
+# v1.3.4, Dec 22 2009 Simon Matter <simon.matter@invoca.ch>
+# - add support for user_deny.db
+
+VERSION=1.3.4
+
+PIDFILE=/var/run/cyrus-master${INSTANCE}.pid
+
+# instance config
+CYRUSCONF=/etc/cyrus${INSTANCE}.conf
+IMAPDCONF=/etc/imapd${INSTANCE}.conf
+
+# make sure what we have is a valid instance
+# and that config files are present
+if [ -n "$INSTANCE" ]; then
+  [ -L /etc/rc.d/init.d/${BASENAME} ] || exit 0
+fi
+[ -f $CYRUSCONF ] || exit 0
+[ -f $IMAPDCONF ] || exit 0
+
+if [ -f $PIDFILE ]; then
+  read CYRUS_PID < $PIDFILE
+  if [ -n "$CYRUS_PID" ]; then
+    if ps -p $CYRUS_PID > /dev/null 2>&1; then
+      echo "ERROR: cyrus-master is running, unable to convert mailboxes!"
+      exit 1
+    fi
+  fi
+fi
+
+if [ ! -f $IMAPDCONF ]; then
+  echo "ERROR: configuration file '${IMAPDCONF}' not found, exiting!"
+  exit 1
+fi
+
+# fallback to su if runuser not available
+if [ -x /sbin/runuser ]; then
+  RUNUSER=runuser
+else
+  RUNUSER=su
+fi
+
+# force cyrus user for security reasons
+if [ ! $(whoami) = "cyrus" ]; then
+  exec $RUNUSER - cyrus -c "cd $PWD < /dev/null ; INSTANCE=$INSTANCE $0 $*"
+fi
+
+# special function for migration
+EXPORT=$1
+
+# files get mode 0600
+umask 166
+
+# show version info in log files
+echo "cvt_cyrusdb_all version: $VERSION"
+
+# expand_config <path>
+# handle "@include" sections from imapd style config file
+expand_config() {
+  while read line; do
+    if printf "%s\n" "${line}" | grep -q '^@include:'; then
+      expand_config "$( printf "%s\n" "${line}" | cut -d : -f 2- | sed -e 's/^[\t ]*//' )"
+    else
+      printf "%s\n" "${line}"
+    fi
+  done < $1
+}
+
+# get_config <config> [<default>]
+# extracts config option from config file
+get_config() {
+  searchstr=$1
+  if config="$(expand_config $IMAPDCONF | egrep "^${searchstr}:")"; then
+    CFGVAL="$(printf "%s\n" "$config" | cut -d : -f 2- | sed -e 's/^[\t ]*//')"
+  else
+    if [ -z "$2" ]; then
+      echo "ERROR: config option '$1' not found in ${IMAPDCONF}, exiting!" 1>&2
+      return 1
+    fi
+    CFGVAL="$2"
+  fi
+  echo "get_config ${1}: $CFGVAL" 1>&2
+  echo "$CFGVAL"
+}
+
+# where to find files and directories
+data_dir=/usr/share/cyrus-imapd/rpm
+lib_dir=/usr/lib/cyrus-imapd
+system_magic=$(file --version | awk '/magic file/ {print $4}')
+cyrus_magic=${data_dir}/magic
+cvt_cyrusdb=/usr/sbin/cvt_cyrusdb
+sievec=/usr/sbin/sievec
+masssievec=${lib_dir}/masssievec
+imap_prefix=$(get_config configdirectory) || exit 1
+sieve_dir=$(get_config sievedir) || exit 1
+db_cfg=${data_dir}/db.cfg
+db_current=${imap_prefix}/rpm/db.cfg.current
+db_cache=${imap_prefix}/rpm/db.cfg.cache
+
+# source default db backend config
+. $db_cfg
+
+# get configured db backend config
+duplicate_db=$(get_config duplicate_db $duplicate_db) || exit 1
+mboxlist_db=$(get_config mboxlist_db $mboxlist_db) || exit 1
+seenstate_db=$(get_config seenstate_db $seenstate_db) || exit 1
+subscription_db=$(get_config subscription_db $subscription_db) || exit 1
+tlscache_db=$(get_config tlscache_db $tlscache_db) || exit 1
+annotation_db=$(get_config annotation_db $annotation_db) || exit 1
+mboxkey_db=$(get_config mboxkey_db $mboxkey_db) || exit 1
+ptscache_db=$(get_config ptscache_db $ptscache_db) || exit 1
+quota_db=$(get_config quota_db $quota_db) || exit 1
+statuscache_db=$(get_config statuscache_db $statuscache_db) || exit 1
+userdeny_db=$(get_config userdeny_db $userdeny_db) || exit 1
+
+# remember current db backend config
+{
+echo "duplicate_db=${duplicate_db}"
+echo "mboxlist_db=${mboxlist_db}"
+echo "seenstate_db=${seenstate_db}"
+echo "subscription_db=${subscription_db}"
+echo "tlscache_db=${tlscache_db}"
+echo "annotation_db=${annotation_db}"
+echo "mboxkey_db=${mboxkey_db}"
+echo "ptscache_db=${ptscache_db}"
+echo "quota_db=${quota_db}"
+echo "statuscache_db=${statuscache_db}"
+echo "userdeny_db=${userdeny_db}"
+echo "sieve_version=${sieve_version}"
+} | sort > $db_current
+
+# file_type <file>
+file_type() {
+  this_type=$(file -b -m "${cyrus_magic}:${system_magic}" "$1" 2> /dev/null)
+  if echo "$this_type" | grep -qi skip > /dev/null 2>&1; then
+    echo skiplist
+  elif echo "$this_type" | grep -qi text > /dev/null 2>&1; then
+    echo flat
+  else
+    echo berkeley
+  fi
+}
+
+# cvt_file <file> <db>
+cvt_file() {
+  target="$1"
+  new_db="$2"
+  if [ -s "$target" ]; then
+    old_db=$(file_type "$target")
+    if [ ! "$old_db" = "$new_db" ]; then
+      # The two-step conversion is paranoia against the filenames being encoded
+      # inside the database or logfiles (berkeley does this, for example).
+      rm -f "${target}.skiplist"
+      if [ "$old_db" = "skiplist" ]; then
+        cp -a "$target" "${target}.skiplist"
+      else
+        $cvt_cyrusdb -C $IMAPDCONF "$target" "$old_db" "${target}.skiplist" skiplist
+      fi
+      RETVAL=$?
+      ERRVAL=$(( $ERRVAL + $RETVAL ))
+      if [ $RETVAL -eq 0 ]; then
+        rm -f "$target"
+        if [ -s "${target}.skiplist" ]; then
+          if [ "$new_db" = "skiplist" ]; then
+            cp -a "${target}.skiplist" "$target"
+          else
+            $cvt_cyrusdb -C $IMAPDCONF "${target}.skiplist" skiplist "$target" "$new_db"
+          fi
+        fi
+        RETVAL=$?
+        ERRVAL=$(( $ERRVAL + $RETVAL ))
+        if [ $RETVAL -eq 0 ]; then
+          rm -f "${target}.skiplist"
+        else
+          echo "ERROR: unable to convert ${target}.skiplist from skiplist to $new_db"
+        fi
+      else
+        echo "ERROR: unable to convert $target from $old_db to skiplist"
+      fi
+    fi
+  fi
+}
+
+# cvt_to_utf8 <file>
+cvt_to_utf8() {
+  target="$1"
+  if [ -s "$target" ]; then
+    if ! $sievec -C $IMAPDCONF "$target" "${target}.sievec"; then
+      iconv --from-code=ISO-8859-1 --to-code=UTF-8 --output="${target}.UTF-8" "$target"
+      if [ -s "${target}.UTF-8" ]; then
+        # preserve timestamp
+        touch --reference="${target}" "${target}.UTF-8"
+        mv -f "${target}.UTF-8" "$target"
+      else
+        ERRVAL=$(( $ERRVAL + 1 ))
+      fi
+    fi
+    rm -f "${target}.sievec"
+  fi
+}
+
+ERRVAL=0
+
+# make sure our Berkeley databases are in a sane state
+# wait for db_checkpoint to end successfully or kill it after a timeout
+db_checkpoint -v -1 -h ${imap_prefix}/db &
+DB_CHECK_PID=$!
+CNT=0
+while [ $CNT -lt 60 ]; do
+  if ! kill -0 $DB_CHECK_PID > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+  let CNT+=1
+done
+if kill -0 $DB_CHECK_PID > /dev/null 2>&1; then
+  kill -USR1 $DB_CHECK_PID > /dev/null 2>&1
+  sleep 1
+  kill -KILL $DB_CHECK_PID > /dev/null 2>&1
+  wait $DB_CHECK_PID > /dev/null 2>&1
+fi
+
+# do a normal recovery
+db_recover -v -h ${imap_prefix}/db
+RETVAL=$?
+if [ $RETVAL -ne 0 ]; then
+  # try a catastrophic recovery instead of normal recovery
+  db_recover -v -c -h ${imap_prefix}/db
+  RETVAL=$?
+  ERRVAL=$(( $ERRVAL + $RETVAL ))
+  if [ $RETVAL -ne 0 ]; then
+    echo "ERROR: catastrophic recovery of Berkeley databases failed"
+  fi
+fi
+
+if [ "$EXPORT" = "export" ]; then
+  # convert all db files to portable format for migration
+  # TODO: quota_db, we don't touch it for now
+  cvt_file ${imap_prefix}/deliver.db           "skiplist"
+  cvt_file ${imap_prefix}/mailboxes.db         "skiplist"
+  cvt_file ${imap_prefix}/tls_sessions.db      "skiplist"
+  cvt_file ${imap_prefix}/annotations.db       "skiplist"
+  cvt_file ${imap_prefix}/ptclient/ptscache.db "skiplist"
+  cvt_file ${imap_prefix}/statuscache.db       "skiplist"
+  cvt_file ${imap_prefix}/user_deny.db         "flat"
+  rm -vf ${imap_prefix}/db/log.*
+  rm -vf ${imap_prefix}/db/__db.*
+else
+  # always convert db files which have been converted to skiplist
+  # TODO: quota_db, we don't touch it for now
+  cvt_file ${imap_prefix}/deliver.db           "$duplicate_db"
+  cvt_file ${imap_prefix}/mailboxes.db         "$mboxlist_db"
+  cvt_file ${imap_prefix}/tls_sessions.db      "$tlscache_db"
+  cvt_file ${imap_prefix}/annotations.db       "$annotation_db"
+  cvt_file ${imap_prefix}/ptclient/ptscache.db "$ptscache_db"
+  cvt_file ${imap_prefix}/statuscache.db       "$statuscache_db"
+  cvt_file ${imap_prefix}/user_deny.db         "$userdeny_db"
+  # do we have to convert all databases?
+  if ! cmp -s $db_current $db_cache; then
+    # we treat sieve scripts the same way like db files
+    find ${sieve_dir}/ -name "*.script" -type f | while read db_file trash; do
+      cvt_to_utf8 "$db_file"
+    done
+    $masssievec $sievec $IMAPDCONF
+    # convert all db files left
+    find ${imap_prefix}/user/ -name "*.seen" -type f | while read db_file trash; do
+      cvt_file "$db_file" "$seenstate_db"
+    done
+    find ${imap_prefix}/user/ -name "*.sub" -type f | while read db_file trash; do
+      cvt_file "$db_file" "$subscription_db"
+    done
+    find ${imap_prefix}/user/ -name "*.mboxkey" -type f | while read db_file trash; do
+      cvt_file "$db_file" "$mboxkey_db"
+    done
+  fi
+fi
+
+# update the config cache file so we can check whether something has changed
+if [ $ERRVAL -eq 0 ]; then
+  mv -f $db_current $db_cache
+else
+  rm -f $db_cache
+  rm -f $db_current
+fi
+
+exit $ERRVAL

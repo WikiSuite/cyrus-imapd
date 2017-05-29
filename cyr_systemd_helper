@@ -1,0 +1,38 @@
+#!/bin/sh
+# get_config [config default]
+# extracts config option from config file
+get_config() {
+  if conf=$(grep "^$1" /etc/imapd.conf); then
+    echo $conf | cut -d: -f2
+  else
+    echo $2
+  fi
+}
+
+CONFIGDIRECTORY=$(get_config configdirectory /var/lib/imap)
+RETVAL=0
+
+start() {
+      cd $CONFIGDIRECTORY
+      runuser - cyrus -s /bin/sh -c "umask 166 ; /usr/lib/cyrus-imapd/cvt_cyrusdb_all > ${CONFIGDIRECTORY}/rpm/db_import.log 2>&1" < /dev/null
+      RETVAL=$?
+}
+
+stop() {
+      cd $CONFIGDIRECTORY
+      runuser - cyrus -s /bin/sh -c "umask 166 ; /usr/lib/cyrus-imapd/cvt_cyrusdb_all export > ${CONFIGDIRECTORY}/rpm/db_export.log 2>&1" < /dev/null
+      RETVAL=$?
+}
+
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  *)
+    ;;
+esac
+
+exit $RETVAL
