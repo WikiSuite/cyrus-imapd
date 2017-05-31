@@ -346,6 +346,7 @@ fi
 %config(noreplace) %{_sysconfdir}/pam.d/mupdate
 %config(noreplace) %{_sysconfdir}/pam.d/csync
 %config(noreplace) %{_sysconfdir}/pam.d/nntp
+%config(noreplace) %{_sysconfdir}/pam.d/http
 %{_sysconfdir}/cron.daily/%{name}
 %{_unitdir}/cyrus-imapd.service
 %{_libdir}/lib*.so*
