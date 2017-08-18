@@ -1,5 +1,5 @@
 Name: cyrus-imapd
-Version: 3.0.1
+Version: 3.0.3
 Release: 1%{?dist}
 
 %define ssl_pem_file %{_sysconfdir}/pki/%{name}/%{name}.pem
@@ -355,7 +355,6 @@ fi
 %{_sbindir}/arbitron
 %{_cyrexecdir}/arbitronsort.pl
 %{_sbindir}/chk_cyrus
-%{_cyrexecdir}/convert-sieve.pl
 %{_sbindir}/cyr_df
 %{_sbindir}/ctl_cyrusdb
 %{_sbindir}/ctl_deliver
@@ -370,7 +369,7 @@ fi
 %{_sbindir}/cyrdump
 %{_cyrexecdir}/cyrus-master
 %{_sbindir}/deliver
-%{_cyrexecdir}/dohash
+#%{_cyrexecdir}/dohash
 %{_cyrexecdir}/fud
 %{_cyrexecdir}/imapd
 %{_sbindir}/ipurge
@@ -379,7 +378,7 @@ fi
 %{_cyrexecdir}/masssievec
 %{_sbindir}/mbexamine
 %{_sbindir}/mbpath
-%{_cyrexecdir}/migrate-metadata
+#%{_cyrexecdir}/migrate-metadata
 %{_cyrexecdir}/mkimap
 %{_cyrexecdir}/mknewsgroups
 %{_cyrexecdir}/notifyd
@@ -394,13 +393,13 @@ fi
 %{_cyrexecdir}/timsieved
 %{_sbindir}/tls_prune
 %{_cyrexecdir}/translatesieve
-%{_cyrexecdir}/undohash
+#%{_cyrexecdir}/undohash
 %{_sbindir}/unexpunge
-%{_cyrexecdir}/upgradesieve
+#%{_cyrexecdir}/upgradesieve
 %{_cyrexecdir}/cvt_cyrusdb_all
 %{_cyrexecdir}/idled
 %{_cyrexecdir}/mupdate
-%{_cyrexecdir}/mupdate-loadgen.pl
+#%{_cyrexecdir}/mupdate-loadgen.pl
 %{_cyrexecdir}/proxyd
 %{_sbindir}/sync_client
 %{_sbindir}/sync_reset
@@ -491,5 +490,8 @@ fi
 /usr/share/perl5/Cyrus/Annotator/
 
 %changelog
+* Fri Aug 18 2017 eGloo <developer@egloo.ca> - 3.0.3-1
+- 3.0.3 release
+
 * Fri May 12 2017 eGloo <developer@egloo.ca> - 3.0.1-1
 - Build 3.0.1, based on RHEL 7 source spec file
