@@ -2,13 +2,20 @@
 Description=Cyrus-imapd IMAP/POP3 email server
 After=local-fs.target network.target
 
+Requires=cyrus-imapd-init.service
+After=cyrus-imapd-init.service
+
 [Service]
 Type=simple
 EnvironmentFile=/etc/sysconfig/cyrus-imapd
-#ExecStartPre=/usr/lib/cyrus-imapd/cyr_systemd_helper start
-ExecStart=/usr/lib/cyrus-imapd/cyrus-master $CYRUSOPTIONS
-ExecStopPost=/usr/lib/cyrus-imapd/cyr_systemd_helper stop
+ExecStart=/usr/libexec/cyrus-imapd/master $CYRUSOPTIONS
 PrivateTmp=true
+
+# Cyrus may spawn many processes in normal operation.  These figures are higher
+# than the defaults, but may still need to be tuned for your local
+# configuration.
+TasksMax=2048
+LimitNOFILE=16384
 
 [Install]
 WantedBy=multi-user.target

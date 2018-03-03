@@ -20,7 +20,7 @@ if [ -f /etc/sysconfig/cyrus-imapd ]; then
   . /etc/sysconfig/cyrus-imapd
 fi
 
-[ -x /usr/lib/cyrus-imapd/ctl_mboxlist ] || exit 0
+[ -x /usr/sbin/ctl_mboxlist ] || exit 0
 [ -f /var/lib/imap/db/skipstamp ] || exit 0
 
 # rotate mailbox lists
@@ -30,7 +30,7 @@ done
 [ -f ${MBOXLIST}.gz ] && mv -f ${MBOXLIST}.gz ${MBOXLIST}.1.gz
 
 # export mailboxes.db
-$RUNUSER - cyrus -s /bin/sh -c "umask 077 < /dev/null ; /usr/lib/cyrus-imapd/ctl_mboxlist -d | gzip > ${MBOXLIST}.gz"
+$RUNUSER - cyrus -s /bin/sh -c "umask 077 < /dev/null ; /usr/sbin/ctl_mboxlist -d | gzip > ${MBOXLIST}.gz"
 
 exit 0
 # EOF
