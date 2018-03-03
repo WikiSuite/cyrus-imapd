@@ -1,6 +1,6 @@
 Name: cyrus-imapd
-Version: 3.0.5
-Release: 8%{?dist}
+Version: 3.1.4
+Release: 1%{?dist}
 
 %define ssl_pem_file /etc/pki/%name/%name.pem
 
@@ -109,16 +109,6 @@ The %name-devel package contains header files and libraries
 necessary for developing applications which use the imclient library.
 
 
-%package doc-extra
-Summary: Extra documentation for the Cyrus IMAP server
-#BuildArch: noarch
-
-%description doc-extra
-This package contains the HTML documentation for the Cyrus IMAP server, as well
-as some legacy and internal documentation not useful for normal operation of
-the server.
-
-
 %package utils
 Summary: Cyrus IMAP server administration utilities
 
@@ -128,30 +118,8 @@ Cyrus IMAP server. It can be installed on systems other than the
 one running the server.
 
 
-%package vzic
-Summary: Utilities to convert timezone database files
-License: GPLv2+
-Requires: %name = %version-%release
-# Contains a lightly forked version of vzic.  This seems to have been bundled
-# into various other things and it's old, so I'm not sure where the upstream
-# is.  Here are a couple of possible upstreams:
-# https://github.com/libical/vzic
-# https://sourceforge.net/projects/vzic/
-# It is probably a good idea to split it out and package it separately, but the
-# code here definitely differs from that at the second link above.
-Provides: bundled(vzic) = 1.3
-
-%description vzic
-vzic is a program to convert the Olson timezone database files into VTIMEZONE
-files compatible with the iCalendar specification (RFC2445).
-
-This package contains a forked version of vzic for internal use by the Cyrus
-IMAP server.
-
-# Build dir is either $PWD, $(pwd) or %
-
 %prep
-%autosetup -p1 -S git
+%autosetup -p1 -S git -n cyrus-imapd-cyrus-imapd-3.1.4
 echo %version > VERSION
 
 %build
@@ -199,9 +167,6 @@ done
 # This isn't built by default, but this package has always installed it.
 make notifyd/notifytest
 
-# Also not built by default, but the tools are needed for serving timezone info
-make -C tools/vzic
-
 
 %install
 make install DESTDIR=%buildroot
@@ -231,10 +196,6 @@ install -m 755 notifyd/notifytest  %buildroot%_bindir/
 install -m 755 perl/imap/cyradm    %buildroot%_bindir/
 for i in arbitronsort.pl masssievec mkimap mknewsgroups rehash translatesieve; do
     install -m 755 tools/$i %buildroot/%cyrexecdir/
-done
-
-for i in vzic vzic-test.pl vzic-merge.pl vzic-dump.pl; do
-    install -m 755 tools/vzic/$i %buildroot/%cyrexecdir/
 done
 
 # Install additional files
@@ -357,7 +318,7 @@ getent passwd cyrus >/dev/null || /usr/sbin/useradd -c "Cyrus IMAP Server" -d /v
 
 %files
 %license COPYING
-%doc README.md doc/README.* doc/examples doc/text
+%doc README.md doc/README.* doc/examples
 
 %_datadir/cyrus-imapd
 %_libdir/libcyrus*.so.*
@@ -418,10 +379,6 @@ getent passwd cyrus >/dev/null || /usr/sbin/useradd -c "Cyrus IMAP Server" -d /v
 %_mandir/man3/imclient.3*
 
 
-%files doc-extra
-%doc doc/html doc/internal doc/legacy
-
-
 %files utils
 %license COPYING
 %doc perl/imap/README
@@ -438,11 +395,10 @@ getent passwd cyrus >/dev/null || /usr/sbin/useradd -c "Cyrus IMAP Server" -d /v
 /usr/lib/cyrus-imapd
 
 
-%files vzic
-%cyrexecdir/vzic*
-
-
 %changelog
+* Sat Mar 03 2018 eGloo <developer@egloo.ca> - 3.1.4-1
+- Release 3.1.4
+
 * Sat Mar 03 2018 eGloo <developer@egloo.ca> - 3.0.5-8
 - Merged with upstream spec file
 
