@@ -1,5 +1,5 @@
 Name: cyrus-imapd
-Version: 3.0.3
+Version: 3.0.5
 Release: 1%{?dist}
 
 %define ssl_pem_file %{_sysconfdir}/pki/%{name}/%{name}.pem
@@ -490,6 +490,9 @@ fi
 /usr/share/perl5/Cyrus/Annotator/
 
 %changelog
+* Fri Mar 02 2018 eGloo <developer@egloo.ca> - 3.0.5-1
+- 3.0.5 release
+
 * Fri Aug 18 2017 eGloo <developer@egloo.ca> - 3.0.3-1
 - 3.0.3 release
 
